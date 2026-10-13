@@ -41,35 +41,58 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  const testUser = await prisma.user.findFirst({ where: { email: 'test@cyberzap.com' } });
+  try {
+    let testUser = await prisma.user.findFirst({ where: { email: 'test@cyberzap.com' } });
 
-  if (!testUser) {
+    if (!testUser) {
+      testUser = await prisma.user.create({
+        data: { name: 'Test User', email: 'test@cyberzap.com' }
+      });
+    }
+
+    const workflows = await prisma.workflow.findMany({
+      where: { userId: testUser.id },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    return NextResponse.json(workflows);
+  } catch (error: any) {
+    console.error('Eroare GET /api/workflows:', error);
     return NextResponse.json(
-      { error: 'Utilizator de test negăsit' },
-      { status: 404 }
+      { error: 'A apărut o eroare la preluarea fluxurilor', details: error.message },
+      { status: 500 }
     );
   }
-
-  const workflows = await prisma.workflow.findMany({
-    where: { userId: testUser.id },
-    orderBy: { createdAt: 'desc' }
-  });
-
-  return NextResponse.json(workflows);
 }
 
 export async function DELETE(request: NextRequest) {
-  const { id } = await request.json();
-  await prisma.workflow.delete({ where: { id } });
-  return NextResponse.json({ message: 'Flux șters cu succes!' });
+  try {
+    const { id } = await request.json();
+    await prisma.workflow.delete({ where: { id } });
+    return NextResponse.json({ message: 'Flux șters cu succes!' });
+  } catch (error: any) {
+    console.error('Eroare DELETE /api/workflows:', error);
+    return NextResponse.json(
+      { error: 'A apărut o eroare la ștergerea fluxului', details: error.message },
+      { status: 500 }
+    );
+  }
 }
 
 export async function PUT(request: NextRequest) {
-  const { id, name, nodes, edges } = await request.json();
-  await prisma.workflow.update({
-    where: { id },
-    data: { name, canvasData: JSON.stringify({ nodes, edges }) }
-  });
-  return NextResponse.json({ message: 'Flux actualizat cu succes!' });
+  try {
+    const { id, name, nodes, edges } = await request.json();
+    await prisma.workflow.update({
+      where: { id },
+      data: { name, canvasData: JSON.stringify({ nodes, edges }) }
+    });
+    return NextResponse.json({ message: 'Flux actualizat cu succes!' });
+  } catch (error: any) {
+    console.error('Eroare PUT /api/workflows:', error);
+    return NextResponse.json(
+      { error: 'A apărut o eroare la actualizarea fluxului', details: error.message },
+      { status: 500 }
+    );
+  }
 }
 

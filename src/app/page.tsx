@@ -156,69 +156,108 @@ export default function CyberZapApp() {
 
 
   const loadWorkFlow = async (showEmptyAlert = true) => {
-    const response = await fetch('/api/workflows');
-    const data = await response.json();
-    if (!Array.isArray(data) || data.length === 0) {
-      if (showEmptyAlert) alert('Nu există fluxuri salvate!');
-      return;
-    }
+    try {
+      const response = await fetch('/api/workflows');
+      if (!response.ok) {
+        console.error('Eroare la încărcare flux: status', response.status);
+        if (showEmptyAlert) alert(`Eroare la încărcare flux (${response.status})`);
+        return;
+      }
+      const data = await response.json();
+      if (!Array.isArray(data) || data.length === 0) {
+        if (showEmptyAlert) alert('Nu există fluxuri salvate!');
+        return;
+      }
 
-    if (data.length > 0) {
-      const parsedData = JSON.parse(data[0].canvasData);
-      setWorkflowId(data[0].id);
-      setNodes(parsedData.nodes);
-      setEdges(parsedData.edges);
+      if (data.length > 0) {
+        const parsedData = JSON.parse(data[0].canvasData);
+        setWorkflowId(data[0].id);
+        setNodes(parsedData.nodes);
+        setEdges(parsedData.edges);
+      }
+    } catch (err) {
+      console.error('Eroare la încărcarea fluxului:', err);
+      if (showEmptyAlert) alert('Eroare la conectarea cu serverul!');
     }
   };
+
   const deleteWorkFlow = async () => {
     if (!workflowId) {
       alert('Nici un flux nu este selectat. Apăsați pe "Adaugă Fluxul" pentru a adăuga un nou flux.');
       return;
     }
-    const response = await fetch('/api/workflows', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: workflowId })
-    });
-    const data = await response.json();
-    alert(data.message);
-    setWorkflowId(null);
-  };
-  const addWorkFlow = async () => {
-
-    const response = await fetch('/api/workflows', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: 'Fluxul Meu Test',
-        nodes: nodes,
-        edges: edges
-      })
-    });
-    const data = await response.json();
-    alert(data.message);
-    if (data.workflow?.id) {
-      setWorkflowId(data.workflow.id);
+    try {
+      const response = await fetch('/api/workflows', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: workflowId })
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        alert(data.error || 'Eroare la ștergerea fluxului!');
+        return;
+      }
+      alert(data.message || 'Flux șters cu succes!');
+      setWorkflowId(null);
+    } catch (err) {
+      console.error('Eroare la ștergerea fluxului:', err);
+      alert('Eroare la ștergerea fluxului!');
     }
   };
+
+  const addWorkFlow = async () => {
+    try {
+      const response = await fetch('/api/workflows', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Fluxul Meu Test',
+          nodes: nodes,
+          edges: edges
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        alert(data.error || 'Eroare la salvarea fluxului!');
+        return;
+      }
+      alert(data.message || 'Flux salvat cu succes!');
+      if (data.workflow?.id) {
+        setWorkflowId(data.workflow.id);
+      }
+    } catch (err) {
+      console.error('Eroare la salvarea fluxului:', err);
+      alert('Eroare la salvarea fluxului!');
+    }
+  };
+
   const updateWorkFlow = async () => {
     if (!workflowId) {
       alert('Nici un flux nu este selectat. Apăsați pe "Adaugă Fluxul" pentru a adăuga un nou flux.');
       return;
     }
-    const response = await fetch('/api/workflows', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: workflowId,
-        name: 'Fluxul Meu Test',
-        nodes: nodes,
-        edges: edges
-      })
-    });
-    const data = await response.json();
-    alert(data.message);
-  }
+    try {
+      const response = await fetch('/api/workflows', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: workflowId,
+          name: 'Fluxul Meu Test',
+          nodes: nodes,
+          edges: edges
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        alert(data.error || 'Eroare la actualizarea fluxului!');
+        return;
+      }
+      alert(data.message || 'Flux actualizat cu succes!');
+    } catch (err) {
+      console.error('Eroare la actualizarea fluxului:', err);
+      alert('Eroare la actualizarea fluxului!');
+    }
+  };
   const adaugaBlocNou = () => {
     const sablon = ETAPE_DISPOZITIV[selectedEtapaIndex] || ETAPE_DISPOZITIV[0];
     const textFinal = numeBlocNou.trim() || sablon.nume;
