@@ -15,6 +15,20 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
+interface EtapeTemplate {
+  nume: string;
+  culoare: string;
+}
+
+const ETAPE_DISPOZITIV: EtapeTemplate[] = [
+  { nume: '🔌 Inițializare: Alimentare', culoare: '#00f3ff' },
+  { nume: '📡 Senzori: Achiziție Date', culoare: '#00ff00' },
+  { nume: '⚙️ Procesare: Calcul & Filtru', culoare: '#ff00ff' },
+  { nume: '📶 Transmisie: Comunicație IoT', culoare: '#ffcc00' },
+  { nume: '🚨 Protecție: Alertă / Eroare', culoare: '#ff0055' },
+  { nume: '💤 Standby: Mod Economic', culoare: '#a855f7' }
+];
+
 const initialNodes: Node[] = [
   {
     id: '1',
@@ -81,6 +95,13 @@ export default function CyberZapApp() {
 
   const [workflowId, setWorkflowId] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedEtapaIndex, setSelectedEtapaIndex] = useState<number>(0);
+  const [numeBlocNou, setNumeBlocNou] = useState<string>(ETAPE_DISPOZITIV[0].nume);
+
+  const handleEtapaChange = (index: number) => {
+    setSelectedEtapaIndex(index);
+    setNumeBlocNou(ETAPE_DISPOZITIV[index]?.nume || '');
+  };
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)),
@@ -105,35 +126,40 @@ export default function CyberZapApp() {
     setSelectedNodeId(node.id);
     //memorararea id-ului nodului selectat
   };
-  const schimbaContinuaNod = (textNou: string, culoareNoua: string) => {
-    setNodes((noduriActuale) => noduriActuale.map((nod) => {
-      if (nod.id === selectedNodeId) {
-        // returnnodul nou modificat
-        return {
-          ...nod, data: { ...nod.data, label: textNou },
-          style: { ...nod.style, border: `1px solid ${culoareNoua}`, color: culoareNoua, boxShadow: `0 0 10px ${culoareNoua}` }
-        }
+  const selectedNode = nodes.find((n) => n.id === selectedNodeId);
+  const schimbaTextNod = (textNou: string) => {
+    setNodes((noduri) => noduri.map((nod) => nod.id === selectedNodeId ? { ...nod, data: { ...nod.data, label: textNou } } : nod))
+  };
+  const schimbaCuloareNod = (culoareNoua: string) => {
+    setNodes((noduri) => noduri.map((nod) => nod.id === selectedNodeId ? {
+      ...nod, style: {
+        ...nod.style, color: culoareNoua, border: `1px solid ${culoareNoua}`, boxShadow: `0 0 10px ${culoareNoua}`
       }
-      return nod; // Return unchanged node
-    }))
-  }
-  const saveWorkFlow = async () => {
-    const response = await fetch('/api/workflows', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-        name: 'Fluxul Meu Test',
-        nodes: nodes,
-        edges: edges
-      })
-    });
-    const data = await response.json();
-    alert(data.message);
+    } : nod))
   };
 
-  const loadWorkFlow = async () => {
+  const stergeBlocSelectat = () => {
+    if (!selectedNodeId) return;
+    const id = selectedNodeId;
+    setNodes((noduri) => noduri.filter((n) => n.id !== id));
+    setEdges((muchii) => muchii.filter((e) => e.source !== id && e.target !== id));
+    setSelectedNodeId(null);
+  };
+
+  const onNodesDelete = useCallback((nodesToDelete: Node[]) => {
+    const idsToDelete = new Set(nodesToDelete.map((n) => n.id));
+    setEdges((eds) => eds.filter((e) => !idsToDelete.has(e.source) && !idsToDelete.has(e.target)));
+    if (selectedNodeId && idsToDelete.has(selectedNodeId)) {
+      setSelectedNodeId(null);
+    }
+  }, [selectedNodeId]);
+
+
+  const loadWorkFlow = async (showEmptyAlert = true) => {
     const response = await fetch('/api/workflows');
     const data = await response.json();
-    if (data.length === 0) {
-      alert('Nu există fluxuri salvate!');
+    if (!Array.isArray(data) || data.length === 0) {
+      if (showEmptyAlert) alert('Nu există fluxuri salvate!');
       return;
     }
 
@@ -194,29 +220,33 @@ export default function CyberZapApp() {
     alert(data.message);
   }
   const adaugaBlocNou = () => {
-    const newId = (nodes.length + 1).toString();
-    const newNode = {
+    const sablon = ETAPE_DISPOZITIV[selectedEtapaIndex] || ETAPE_DISPOZITIV[0];
+    const textFinal = numeBlocNou.trim() || sablon.nume;
+    const newId = (Date.now() % 100000).toString();
+    const newNode: Node = {
       id: newId,
-      data: { label: `⚡ Nod Nou ${newId}` },
-
+      data: { label: textFinal },
       position: {
-        x: Math.random() * 300,
-        y: Math.random() * 300
+        x: 120 + Math.random() * 250,
+        y: 100 + Math.random() * 250
       },
       style: {
-        background: 'rgba(20, 20, 35, 0.7)',
-        color: '#ffcc00',
-        border: '1px solid #ffcc00',
+        background: 'rgba(20, 20, 35, 0.85)',
+        color: sablon.culoare,
+        border: `1px solid ${sablon.culoare}`,
         borderRadius: '8px',
-        boxShadow: '0 0 10px rgba(0,243,255,0.3)',
+        boxShadow: `0 0 10px ${sablon.culoare}`,
         cursor: 'pointer',
-        fontWeight: 'bold'
+        fontWeight: 'bold',
+        padding: '10px'
       }
-    }
-    setNodes(noduriVechi => [...noduriVechi, newNode])
+    };
+    setNodes((noduriVechi) => [...noduriVechi, newNode]);
+    setSelectedNodeId(newId);
+    setNumeBlocNou(sablon.nume);
   };
   useEffect(() => {
-    loadWorkFlow()
+    loadWorkFlow(false);
   }, []);
 
   return (
@@ -227,31 +257,128 @@ export default function CyberZapApp() {
         <h1 style={{ color: 'var(--neon-cyan)', fontSize: '24px', fontWeight: 'bold', textShadow: '0 0 10px rgba(0,243,255,0.5)' }}>
           ⚡ CYBER-ZAP
         </h1>
-        <button onClick={saveWorkFlow} style={{ background: 'transparent', color: '#00f3ff', padding: '10px 20px', border: '1px solid #00f3ff', borderRadius: '8px', boxShadow: '0 0 10px rgba(0,243,255,0.3)', cursor: 'pointer', fontWeight: 'bold' }}>
-          💾 Salvează Fluxul
-        </button>
-        <button onClick={loadWorkFlow} style={{ background: 'transparent', color: '#ff00ff', padding: '10px 20px', border: '1px solid #ff00ff', borderRadius: '8px', boxShadow: '0 0 10px rgba(0,243,255,0.3)', cursor: 'pointer', fontWeight: 'bold' }}>
+        <button onClick={() => loadWorkFlow(true)} style={{ background: 'transparent', color: '#ff00ff', padding: '10px 20px', border: '1px solid #ff00ff', borderRadius: '8px', boxShadow: '0 0 10px rgba(255,0,255,0.3)', cursor: 'pointer', fontWeight: 'bold' }}>
           💾 Încarcă Fluxul
         </button>
-        <button onClick={addWorkFlow} style={{ background: 'transparent', color: '#00ff00', padding: '10px 20px', border: '1px solid #00ff00', borderRadius: '8px', boxShadow: '0 0 10px rgba(0,243,255,0.3)', cursor: 'pointer', fontWeight: 'bold' }}>
-          Adaugă Fluxul
+        <button onClick={addWorkFlow} style={{ background: 'transparent', color: '#00ff00', padding: '10px 20px', border: '1px solid #00ff00', borderRadius: '8px', boxShadow: '0 0 10px rgba(0,255,0,0.3)', cursor: 'pointer', fontWeight: 'bold' }}>
+          ➕ Salvează Flux Nou
         </button>
-        <button onClick={updateWorkFlow} style={{ background: 'transparent', color: '#00ff00', padding: '10px 20px', border: '1px solid #00ff00', borderRadius: '8px', boxShadow: '0 0 10px rgba(0,243,255,0.3)', cursor: 'pointer', fontWeight: 'bold' }}>
-          Actualizează Fluxul
+        <button onClick={updateWorkFlow} style={{ background: 'transparent', color: '#00f3ff', padding: '10px 20px', border: '1px solid #00f3ff', borderRadius: '8px', boxShadow: '0 0 10px rgba(0,243,255,0.3)', cursor: 'pointer', fontWeight: 'bold' }}>
+          ⚡ Actualizează Fluxul
         </button>
-        <button onClick={deleteWorkFlow} style={{ background: 'transparent', color: '#ff0000', padding: '10px 20px', border: '1px solid #ff0000', borderRadius: '8px', boxShadow: '0 0 10px rgba(0,243,255,0.3)', cursor: 'pointer', fontWeight: 'bold' }}>
-          Șterge Fluxul
+        <button onClick={deleteWorkFlow} style={{ background: 'transparent', color: '#ff0000', padding: '10px 20px', border: '1px solid #ff0000', borderRadius: '8px', boxShadow: '0 0 10px rgba(255,0,0,0.3)', cursor: 'pointer', fontWeight: 'bold' }}>
+          🗑️ Șterge Fluxul
         </button>
-        <button onClick={adaugaBlocNou} style={{ background: 'transparent', color: '#ffcc00', border: '1px solid #ffcc00', borderRadius: '8px', boxShadow: '0 0 10px rgba(255,204,0,0.3)', cursor: 'pointer', fontWeight: 'bold' }}> ➕ Creează Bloc</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <select
+            value={selectedEtapaIndex}
+            onChange={(e) => handleEtapaChange(Number(e.target.value))}
+            style={{
+              background: 'rgba(20, 20, 35, 0.95)',
+              color: ETAPE_DISPOZITIV[selectedEtapaIndex]?.culoare || '#ffcc00',
+              border: `1px solid ${ETAPE_DISPOZITIV[selectedEtapaIndex]?.culoare || '#ffcc00'}`,
+              borderRadius: '8px',
+              padding: '9px 12px',
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              outline: 'none',
+              boxShadow: `0 0 8px ${ETAPE_DISPOZITIV[selectedEtapaIndex]?.culoare || '#ffcc00'}44`
+            }}
+          >
+            {ETAPE_DISPOZITIV.map((etapa, idx) => (
+              <option key={idx} value={idx} style={{ background: '#141423', color: etapa.culoare }}>
+                {etapa.nume}
+              </option>
+            ))}
+          </select>
+          <input
+            type="text"
+            placeholder="Nume bloc personalizat..."
+            value={numeBlocNou}
+            onChange={(e) => setNumeBlocNou(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                adaugaBlocNou();
+              }
+            }}
+            style={{
+              background: 'rgba(0, 0, 0, 0.6)',
+              color: '#fff',
+              border: `1px solid ${ETAPE_DISPOZITIV[selectedEtapaIndex]?.culoare || '#ffcc00'}`,
+              borderRadius: '8px',
+              padding: '9px 14px',
+              outline: 'none',
+              minWidth: '220px',
+              fontWeight: '500'
+            }}
+          />
+          <button
+            onClick={adaugaBlocNou}
+            style={{
+              background: 'transparent',
+              color: ETAPE_DISPOZITIV[selectedEtapaIndex]?.culoare || '#ffcc00',
+              padding: '10px 18px',
+              border: `1px solid ${ETAPE_DISPOZITIV[selectedEtapaIndex]?.culoare || '#ffcc00'}`,
+              borderRadius: '8px',
+              boxShadow: `0 0 10px ${ETAPE_DISPOZITIV[selectedEtapaIndex]?.culoare || '#ffcc00'}55`,
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            ➕ Adaugă Bloc
+          </button>
+        </div>
         <div style={{ color: 'var(--text-secondary)' }}>
           Visual Workflow Builder v1.0
         </div>
       </header>
-      {selectedNodeId && (
-        <div style={{ padding: '15px', background: 'rgba(20,20,35,0.9)', borderBottom: '1px solid #ffcc00' }}>
-          <span style={{ color: 'white', marginRight: '10px' }}>Editează Nodul {selectedNodeId}:</span>
-          <input type="text" placeholder="Nume nou..." onChange={(e) => schimbaContinuaNod(e.target.value, "#ffcc00")} style={{ background: 'transparent', color: '#ffcc00', border: '1px solid #ffcc00', padding: '5px', borderRadius: '5px', marginRight: '10px' }} />
-          <button onClick={() => setSelectedNodeId(null)} style={{ background: 'transparent', color: '#ff0000', border: 'none', cursor: 'pointer' }}> ✖ Închide Panoul</button>
+      {selectedNode && (
+        <div style={{ padding: '12px 25px', background: 'rgba(20,20,35,0.95)', borderBottom: '1px solid rgba(0,243,255,0.4)', display: 'flex', alignItems: 'center', gap: '15px' }}>
+          <span style={{ color: 'white', fontWeight: 'bold' }}>Editează Etapa {selectedNode.id}:</span>
+          {/*Input Text (preia automat textul curent al nodului) */}
+          <input
+            type="text"
+            placeholder="Nume etapă..."
+            value={(selectedNode.data?.label as string) || ''}
+            onChange={(e) => schimbaTextNod(e.target.value)}
+            style={{ background: 'rgba(0,0,0,0.5)', color: '#fff', border: '1px solid #00f3ff', padding: '6px 12px', borderRadius: '6px', outline: 'none', minWidth: '220px' }}
+          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ color: "var(--text-secondary)", fontSize: '14px' }}>Culoare:</span>
+            <input
+              type="color"
+              value={(selectedNode.style?.color as string) || '#00f3ff'}
+              onChange={(e) => schimbaCuloareNod(e.target.value)}
+              style={{ width: '36px', height: '36px', border: 'none', borderRadius: '6px', cursor: 'pointer', background: 'transparent' }}
+            />
+          </div>
+          {/* Buton Șterge Blocul */}
+          <button
+            onClick={stergeBlocSelectat}
+            style={{
+              background: 'rgba(255, 0, 85, 0.15)',
+              color: '#ff0055',
+              border: '1px solid #ff0055',
+              padding: '7px 14px',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 0 8px rgba(255, 0, 85, 0.3)'
+            }}
+          >
+            🗑️ Șterge Blocul
+          </button>
+          <button
+            onClick={() => setSelectedNodeId(null)}
+            style={{ marginLeft: 'auto', background: 'transparent', color: '#8892b0', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px' }}
+          >
+            ✖ Închide Panoul
+          </button>
         </div>
       )}
       {/* Editor Container */}
@@ -261,6 +388,8 @@ export default function CyberZapApp() {
           edges={edges}
           onNodesChange={onNodesChange}
           onNodeClick={onNodeClick}
+          onNodesDelete={onNodesDelete}
+          deleteKeyCode={['Backspace', 'Delete']}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           fitView
