@@ -94,9 +94,12 @@ export default function CyberZapApp() {
   const [edges, setEdges] = useState<Edge[]>(initialEdges);
 
   const [workflowId, setWorkflowId] = useState<string | null>(null);
+  const [workflowName, setWorkflowName] = useState<string>('Flux Nou');
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEtapaIndex, setSelectedEtapaIndex] = useState<number>(0);
   const [numeBlocNou, setNumeBlocNou] = useState<string>(ETAPE_DISPOZITIV[0].nume);
+  const [showFluxPanel, setShowFluxPanel] = useState<boolean>(false);
+  const [allWorkflows, setAllWorkflows] = useState<Array<{ id: string; name: string; createdAt: string; canvasData?: string }>>([]);
 
   const handleEtapaChange = (index: number) => {
     setSelectedEtapaIndex(index);
@@ -154,64 +157,74 @@ export default function CyberZapApp() {
     }
   }, [selectedNodeId]);
 
-
-  const loadWorkFlow = async (showEmptyAlert = true) => {
+  const fetchWorkflows = async () => {
     try {
       const response = await fetch('/api/workflows');
-      if (!response.ok) {
-        console.error('Eroare la încărcare flux: status', response.status);
-        if (showEmptyAlert) alert(`Eroare la încărcare flux (${response.status})`);
-        return;
-      }
+      if (!response.ok) return [];
       const data = await response.json();
-      if (!Array.isArray(data) || data.length === 0) {
-        if (showEmptyAlert) alert('Nu există fluxuri salvate!');
-        return;
+      if (Array.isArray(data)) {
+        setAllWorkflows(data);
+        return data;
       }
-
-      if (data.length > 0) {
-        const parsedData = JSON.parse(data[0].canvasData);
-        setWorkflowId(data[0].id);
-        setNodes(parsedData.nodes);
-        setEdges(parsedData.edges);
-      }
+      return [];
     } catch (err) {
-      console.error('Eroare la încărcarea fluxului:', err);
-      if (showEmptyAlert) alert('Eroare la conectarea cu serverul!');
+      console.error('Eroare la preluarea fluxurilor:', err);
+      return [];
     }
   };
 
-  const deleteWorkFlow = async () => {
-    if (!workflowId) {
-      alert('Nici un flux nu este selectat. Apăsați pe "Adaugă Fluxul" pentru a adăuga un nou flux.');
-      return;
-    }
+  const selectWorkflow = (wf: { id: string; name: string; canvasData?: string }) => {
     try {
-      const response = await fetch('/api/workflows', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: workflowId })
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        alert(data.error || 'Eroare la ștergerea fluxului!');
+      if (!wf.canvasData) {
+        alert('Fluxul nu conține date de diagramă!');
         return;
       }
-      alert(data.message || 'Flux șters cu succes!');
-      setWorkflowId(null);
+      const parsedData = JSON.parse(wf.canvasData);
+      setWorkflowId(wf.id);
+      setWorkflowName(wf.name || 'Flux Salvat');
+      setNodes(parsedData.nodes || []);
+      setEdges(parsedData.edges || []);
+      setSelectedNodeId(null);
+      setShowFluxPanel(false);
     } catch (err) {
-      console.error('Eroare la ștergerea fluxului:', err);
-      alert('Eroare la ștergerea fluxului!');
+      console.error('Eroare la încărcarea fluxului:', err);
+      alert('Eroare la încărcarea fluxului selectat!');
     }
+  };
+
+  const creeazaDiagramaNoua = () => {
+    setWorkflowId(null);
+    setWorkflowName('Flux Nou');
+    setNodes([
+      {
+        id: '1',
+        data: { label: 'Start Dispozitiv' },
+        position: { x: 100, y: 150 },
+        style: {
+          background: 'rgba(20, 20, 35, 0.85)',
+          color: '#00f3ff',
+          border: '1px solid #00f3ff',
+          borderRadius: '8px',
+          boxShadow: '0 0 10px #00f3ff',
+          cursor: 'pointer',
+          fontWeight: 'bold',
+          padding: '10px'
+        }
+      }
+    ]);
+    setEdges([]);
+    setSelectedNodeId(null);
+    setShowFluxPanel(false);
   };
 
   const addWorkFlow = async () => {
+    const numeSalvat = workflowName.trim() || 'Flux Nou';
     try {
       const response = await fetch('/api/workflows', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: 'Fluxul Meu Test',
+          name: numeSalvat,
           nodes: nodes,
           edges: edges
         })
@@ -225,6 +238,7 @@ export default function CyberZapApp() {
       if (data.workflow?.id) {
         setWorkflowId(data.workflow.id);
       }
+      await fetchWorkflows();
     } catch (err) {
       console.error('Eroare la salvarea fluxului:', err);
       alert('Eroare la salvarea fluxului!');
@@ -233,16 +247,17 @@ export default function CyberZapApp() {
 
   const updateWorkFlow = async () => {
     if (!workflowId) {
-      alert('Nici un flux nu este selectat. Apăsați pe "Adaugă Fluxul" pentru a adăuga un nou flux.');
+      alert('Niciun flux salvat nu este activ. Salvați un flux nou mai întâi!');
       return;
     }
+    const numeSalvat = workflowName.trim() || 'Flux Actualizat';
     try {
       const response = await fetch('/api/workflows', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: workflowId,
-          name: 'Fluxul Meu Test',
+          name: numeSalvat,
           nodes: nodes,
           edges: edges
         })
@@ -253,9 +268,36 @@ export default function CyberZapApp() {
         return;
       }
       alert(data.message || 'Flux actualizat cu succes!');
+      await fetchWorkflows();
     } catch (err) {
       console.error('Eroare la actualizarea fluxului:', err);
       alert('Eroare la actualizarea fluxului!');
+    }
+  };
+
+  const deleteWorkflowById = async (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!confirm('Ești sigur că vrei să elimini acest flux?')) return;
+    try {
+      const response = await fetch('/api/workflows', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        alert(data.error || 'Eroare la ștergerea fluxului!');
+        return;
+      }
+      alert(data.message || 'Flux șters cu succes!');
+      if (workflowId === id) {
+        setWorkflowId(null);
+        setWorkflowName('Flux Nou');
+      }
+      await fetchWorkflows();
+    } catch (err) {
+      console.error('Eroare la ștergerea fluxului:', err);
+      alert('Eroare la ștergerea fluxului!');
     }
   };
   const adaugaBlocNou = () => {
@@ -285,29 +327,137 @@ export default function CyberZapApp() {
     setNumeBlocNou(sablon.nume);
   };
   useEffect(() => {
-    loadWorkFlow(false);
+    const initWorkflows = async () => {
+      const wfs = await fetchWorkflows();
+      if (wfs && wfs.length > 0) {
+        // Încarcă primul flux găsit automat pe canvas
+        selectWorkflow(wfs[0]);
+      }
+    };
+    initWorkflows();
   }, []);
 
   return (
     <main style={{ height: '100vh', width: '100vw', display: 'flex', flexDirection: 'column' }}>
 
       {/* Navbar Glassmorphism */}
-      <header className="glass-panel" style={{ margin: '15px', padding: '15px 30px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 10 }}>
-        <h1 style={{ color: 'var(--neon-cyan)', fontSize: '24px', fontWeight: 'bold', textShadow: '0 0 10px rgba(0,243,255,0.5)' }}>
-          ⚡ CYBER-ZAP
-        </h1>
-        <button onClick={() => loadWorkFlow(true)} style={{ background: 'transparent', color: '#ff00ff', padding: '10px 20px', border: '1px solid #ff00ff', borderRadius: '8px', boxShadow: '0 0 10px rgba(255,0,255,0.3)', cursor: 'pointer', fontWeight: 'bold' }}>
-          💾 Încarcă Fluxul
-        </button>
-        <button onClick={addWorkFlow} style={{ background: 'transparent', color: '#00ff00', padding: '10px 20px', border: '1px solid #00ff00', borderRadius: '8px', boxShadow: '0 0 10px rgba(0,255,0,0.3)', cursor: 'pointer', fontWeight: 'bold' }}>
-          ➕ Salvează Flux Nou
-        </button>
-        <button onClick={updateWorkFlow} style={{ background: 'transparent', color: '#00f3ff', padding: '10px 20px', border: '1px solid #00f3ff', borderRadius: '8px', boxShadow: '0 0 10px rgba(0,243,255,0.3)', cursor: 'pointer', fontWeight: 'bold' }}>
-          ⚡ Actualizează Fluxul
-        </button>
-        <button onClick={deleteWorkFlow} style={{ background: 'transparent', color: '#ff0000', padding: '10px 20px', border: '1px solid #ff0000', borderRadius: '8px', boxShadow: '0 0 10px rgba(255,0,0,0.3)', cursor: 'pointer', fontWeight: 'bold' }}>
-          🗑️ Șterge Fluxul
-        </button>
+      <header className="glass-panel" style={{ margin: '15px', padding: '12px 25px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 10, flexWrap: 'wrap', gap: '15px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+          <h1 style={{ color: 'var(--neon-cyan)', fontSize: '22px', fontWeight: 'bold', textShadow: '0 0 10px rgba(0,243,255,0.5)', margin: 0 }}>
+            ⚡ CYBER-ZAP
+          </h1>
+
+          {/* Selector / Editor Nume Flux Curent */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(0, 0, 0, 0.45)', padding: '6px 12px', borderRadius: '8px', border: '1px solid rgba(0,243,255,0.3)' }}>
+            <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Nume:</span>
+            <input
+              type="text"
+              value={workflowName}
+              onChange={(e) => setWorkflowName(e.target.value)}
+              placeholder="Nume flux..."
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#00f3ff',
+                fontWeight: 'bold',
+                outline: 'none',
+                width: '140px',
+                fontSize: '13px'
+              }}
+            />
+            {workflowId ? (
+              <span title="Flux salvat în baza de date" style={{ color: '#00ff88', fontSize: '11px', background: 'rgba(0,255,136,0.1)', padding: '2px 6px', borderRadius: '4px', border: '1px solid rgba(0,255,136,0.3)', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+                ● Salvat
+              </span>
+            ) : (
+              <span title="Diagramă nesalvată încă" style={{ color: '#ffaa00', fontSize: '11px', background: 'rgba(255,170,0,0.1)', padding: '2px 6px', borderRadius: '4px', border: '1px solid rgba(255,170,0,0.3)', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+                ● Nou
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Butoane Gestionare Fluxuri */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <button
+            onClick={() => {
+              fetchWorkflows();
+              setShowFluxPanel(true);
+            }}
+            style={{
+              background: showFluxPanel ? 'rgba(0,243,255,0.2)' : 'transparent',
+              color: '#00f3ff',
+              padding: '9px 16px',
+              border: '1px solid #00f3ff',
+              borderRadius: '8px',
+              boxShadow: '0 0 10px rgba(0,243,255,0.3)',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '13px'
+            }}
+          >
+            📁 Fluxuri ({allWorkflows.length})
+          </button>
+
+          <button
+            onClick={addWorkFlow}
+            title="Salvează ca flux nou în baza de date"
+            style={{
+              background: 'transparent',
+              color: '#00ff88',
+              padding: '9px 16px',
+              border: '1px solid #00ff88',
+              borderRadius: '8px',
+              boxShadow: '0 0 10px rgba(0,255,136,0.3)',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              fontSize: '13px'
+            }}
+          >
+            💾 Salvează Nou
+          </button>
+
+          {workflowId && (
+            <button
+              onClick={updateWorkFlow}
+              title="Actualizează fluxul activ existent"
+              style={{
+                background: 'transparent',
+                color: '#ffcc00',
+                padding: '9px 16px',
+                border: '1px solid #ffcc00',
+                borderRadius: '8px',
+                boxShadow: '0 0 10px rgba(255,204,0,0.3)',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                fontSize: '13px'
+              }}
+            >
+              ⚡ Actualizează
+            </button>
+          )}
+
+          <button
+            onClick={creeazaDiagramaNoua}
+            title="Golește canvas-ul pentru a începe o diagramă nouă"
+            style={{
+              background: 'transparent',
+              color: '#ff00ff',
+              padding: '9px 14px',
+              border: '1px solid #ff00ff',
+              borderRadius: '8px',
+              boxShadow: '0 0 10px rgba(255,0,255,0.3)',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              fontSize: '13px'
+            }}
+          >
+            ✨ Nou
+          </button>
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <select
             value={selectedEtapaIndex}
@@ -437,6 +587,230 @@ export default function CyberZapApp() {
           <Controls />
         </ReactFlow>
       </div>
+
+      {/* Modal Panou Gestionare Fluxuri */}
+      {showFluxPanel && (
+        <div
+          onClick={() => setShowFluxPanel(false)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '20px'
+          }}
+        >
+          <div
+            className="glass-panel"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: '560px',
+              maxHeight: '80vh',
+              background: 'rgba(15, 15, 30, 0.96)',
+              border: '1px solid rgba(0, 243, 255, 0.5)',
+              borderRadius: '14px',
+              boxShadow: '0 0 35px rgba(0, 243, 255, 0.25)',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden'
+            }}
+          >
+            {/* Header Modal */}
+            <div
+              style={{
+                padding: '16px 22px',
+                borderBottom: '1px solid rgba(0, 243, 255, 0.25)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                background: 'rgba(0, 243, 255, 0.05)'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '22px' }}>📁</span>
+                <div>
+                  <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: '#00f3ff', margin: 0 }}>
+                    Gestionare Fluxuri Cyber-Zap
+                  </h2>
+                  <span style={{ fontSize: '12px', color: '#8892b0' }}>
+                    {allWorkflows.length} {allWorkflows.length === 1 ? 'flux salvat' : 'fluxuri salvate'} în baza de date
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowFluxPanel(false)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#8892b0',
+                  fontSize: '18px',
+                  cursor: 'pointer',
+                  padding: '4px 8px'
+                }}
+              >
+                ✖
+              </button>
+            </div>
+
+            {/* Listă Fluxuri */}
+            <div
+              style={{
+                padding: '16px 20px',
+                overflowY: 'auto',
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '10px'
+              }}
+            >
+              {allWorkflows.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px 20px', color: '#8892b0' }}>
+                  <div style={{ fontSize: '36px', marginBottom: '10px' }}>📭</div>
+                  <p style={{ margin: 0, fontWeight: 'bold', color: '#fff' }}>Nu există fluxuri salvate încă.</p>
+                  <p style={{ margin: '6px 0 0 0', fontSize: '13px', color: '#626d8a' }}>
+                    Construiește o diagramă pe canvas și apasă pe &quot;Salvează Nou&quot;.
+                  </p>
+                </div>
+              ) : (
+                allWorkflows.map((wf) => {
+                  const isActive = wf.id === workflowId;
+                  return (
+                    <div
+                      key={wf.id}
+                      style={{
+                        padding: '12px 16px',
+                        borderRadius: '10px',
+                        background: isActive ? 'rgba(0, 243, 255, 0.1)' : 'rgba(255, 255, 255, 0.03)',
+                        border: `1px solid ${isActive ? '#00f3ff' : 'rgba(255, 255, 255, 0.1)'}`,
+                        boxShadow: isActive ? '0 0 12px rgba(0, 243, 255, 0.2)' : 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '12px',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontWeight: 'bold', color: isActive ? '#00f3ff' : '#fff', fontSize: '15px' }}>
+                            {wf.name || 'Fără Nume'}
+                          </span>
+                          {isActive && (
+                            <span
+                              style={{
+                                fontSize: '10px',
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                                background: 'rgba(0, 243, 255, 0.2)',
+                                color: '#00f3ff',
+                                border: '1px solid #00f3ff',
+                                fontWeight: 'bold'
+                              }}
+                            >
+                              ACTIV
+                            </span>
+                          )}
+                        </div>
+                        <span style={{ fontSize: '12px', color: '#8892b0', marginTop: '3px', display: 'block' }}>
+                          Creat la: {new Date(wf.createdAt).toLocaleString('ro-RO')}
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <button
+                          onClick={() => selectWorkflow(wf)}
+                          disabled={isActive}
+                          style={{
+                            background: isActive ? 'rgba(0, 243, 255, 0.15)' : 'transparent',
+                            color: isActive ? '#00f3ff' : '#00ff88',
+                            border: `1px solid ${isActive ? '#00f3ff' : '#00ff88'}`,
+                            padding: '7px 14px',
+                            borderRadius: '6px',
+                            cursor: isActive ? 'default' : 'pointer',
+                            fontWeight: 'bold',
+                            fontSize: '13px',
+                            opacity: isActive ? 0.7 : 1
+                          }}
+                        >
+                          {isActive ? '✓ Pe Canvas' : '📂 Încarcă'}
+                        </button>
+                        <button
+                          onClick={(e) => deleteWorkflowById(wf.id, e)}
+                          title="Șterge acest flux definitiv"
+                          style={{
+                            background: 'rgba(255, 0, 85, 0.15)',
+                            color: '#ff0055',
+                            border: '1px solid #ff0055',
+                            padding: '7px 12px',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            fontWeight: 'bold',
+                            fontSize: '13px'
+                          }}
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Footer Modal */}
+            <div
+              style={{
+                padding: '14px 20px',
+                borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+                background: 'rgba(0, 0, 0, 0.3)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}
+            >
+              <button
+                onClick={creeazaDiagramaNoua}
+                style={{
+                  background: 'transparent',
+                  color: '#ff00ff',
+                  border: '1px solid #ff00ff',
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  fontSize: '13px',
+                  boxShadow: '0 0 8px rgba(255, 0, 255, 0.3)'
+                }}
+              >
+                ✨ Diagramă Nouă (Reset)
+              </button>
+              <button
+                onClick={() => setShowFluxPanel(false)}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  color: '#fff',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  padding: '8px 18px',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  fontSize: '13px'
+                }}
+              >
+                Închide
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </main>
   );
